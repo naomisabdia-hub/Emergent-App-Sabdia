@@ -134,12 +134,14 @@ class CheckoutIn(BaseModel):
     property: str
     expected_return_date: str  # ISO date
     notes: Optional[str] = None
+    checkout_photo_url: Optional[str] = None  # base64 data URI
 
 class CheckinIn(BaseModel):
     asset_id: str  # asset's UUID
     condition: Literal["Good", "Minor Damage", "Major Damage", "Missing Parts"]
     notes: Optional[str] = None
-    photo_base64: Optional[str] = None
+    checkin_photo_url: Optional[str] = None
+    condition_photo_url: Optional[str] = None
 
 class BookingIn(BaseModel):
     asset_id: str
@@ -461,6 +463,15 @@ async def create_booking(payload: BookingIn, user: dict = Depends(get_current_us
     asset = await db.assets.find_one({"id": payload.asset_id})
     if not asset:
         raise HTTPException(404, "Asset not found")
+    # Conflict detection: existing approved/pending booking that overlaps OR open checkout
+    conflicts = await db.bookings.find({
+        "asset_uid": payload.asset_id,
+        "status": {"$in": ["Pending", "Approved"]},
+        "start_date": {"$lte": payload.end_date},
+        "end_date": {"$gte": payload.start_date},
+    }).to_list(20)
+    open_co = await db.checkouts.find_one({"asset_uid": payload.asset_id, "status": "Open"})
+    has_conflict = bool(conflicts) or bool(open_co)
     bk = {
         "id": str(uuid.uuid4()),
         "asset_uid": payload.asset_id,
@@ -473,6 +484,7 @@ async def create_booking(payload: BookingIn, user: dict = Depends(get_current_us
         "end_date": payload.end_date,
         "purpose": payload.purpose,
         "status": "Pending",
+        "has_conflict": has_conflict,
         "request_date": now_utc(),
     }
     await db.bookings.insert_one(bk)
@@ -608,6 +620,26 @@ PROPERTIES = [
     "119 Buena Vista",
     "30 Matong",
     "79 Lapraik",
+    "Warehouse",
+    "On Site",
+]
+
+SITE_TO_PROPERTY = {
+    "Warehouse": "Warehouse",
+    "On Site": "On Site",
+    "30 Matong": "30 Matong",
+    "79 Lapraik": "79 Lapraik",
+    "6 Dagmar": "6 & 8 Dagmar",
+    "119 Buena Vista": "119 Buena Vista",
+    "96 Newman Avenue": "96 Newman Avenue",
+}
+
+# Real users mentioned in the asset data
+REAL_USERS = [
+    {"email": "naomi.durcau@sabdia.com", "password": "Sabdia123!", "full_name": "Naomi Durcau", "role": "admin", "property_assignment": "All Properties"},
+    {"email": "johnny@sabdia.com", "password": "Trade123!", "full_name": "Johnny Fainges", "role": "trade", "property_assignment": "6 & 8 Dagmar"},
+    {"email": "tallisha@sabdia.com", "password": "Trade123!", "full_name": "Tallisha Emes", "role": "trade", "property_assignment": "30 Matong"},
+    {"email": "steve@sabdia.com", "password": "Trade123!", "full_name": "Steve Palmer", "role": "trade", "property_assignment": "On Site"},
 ]
 
 CATEGORIES = [
@@ -621,18 +653,14 @@ CATEGORIES = [
     "Power Tool Accessory",
 ]
 
-SAMPLE_ASSETS = [
-    {"asset_id": "ACCE-001", "name": "Platform Ladder – Bailey – 3 Metre", "brand": "Bailey", "model": "FS13980", "serial_no": "BAL-3M-001", "category": "Access", "image_url": "https://images.unsplash.com/photo-1603080296081-81f47189df91?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxjb25zdHJ1Y3Rpb24lMjBsYWRkZXJ8ZW58MHx8fHwxNzc3Mjg1NTk5fDA&ixlib=rb-4.1.0&q=85", "location": "96 Newman Avenue – Storage"},
-    {"asset_id": "ACCE-002", "name": "Extension Ladder – 6 Metre", "brand": "Bailey", "model": "FS13881", "serial_no": "BAL-6M-002", "category": "Access", "image_url": "https://images.unsplash.com/photo-1603080296081-81f47189df91?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxjb25zdHJ1Y3Rpb24lMjBsYWRkZXJ8ZW58MHx8fHwxNzc3Mjg1NTk5fDA&ixlib=rb-4.1.0&q=85", "location": "6 & 8 Dagmar – Garage"},
-    {"asset_id": "PTA-001", "name": "Hammer Drill – DeWalt 20V Max", "brand": "DeWalt", "model": "DCD996", "serial_no": "DW-996-101", "category": "Power Tools", "image_url": "https://images.pexels.com/photos/30413424/pexels-photo-30413424.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "96 Newman Avenue – Tool Room"},
-    {"asset_id": "PTA-002", "name": "Circular Saw – Makita 18V", "brand": "Makita", "model": "DSS611Z", "serial_no": "MAK-611-202", "category": "Power Tools", "image_url": "https://images.pexels.com/photos/30413424/pexels-photo-30413424.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "30 Matong – Site Box"},
-    {"asset_id": "GAR-001", "name": "Stihl Brushcutter FS 91 R", "brand": "Stihl", "model": "FS 91 R", "serial_no": "STH-FS91-301", "category": "Gardening", "image_url": "https://images.pexels.com/photos/11397558/pexels-photo-11397558.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "119 Buena Vista"},
-    {"asset_id": "PEQ-001", "name": "Honda Generator EU22i", "brand": "Honda", "model": "EU22i", "serial_no": "HON-EU22-401", "category": "Power Equipment", "image_url": "https://images.pexels.com/photos/5693845/pexels-photo-5693845.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "79 Lapraik"},
-    {"asset_id": "MHA-001", "name": "Electric Pallet Jack – 2T", "brand": "Linde", "model": "T20SP", "serial_no": "LIN-T20-501", "category": "Material Handling", "image_url": "https://images.pexels.com/photos/29491416/pexels-photo-29491416.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "96 Newman Avenue"},
-    {"asset_id": "HTL-001", "name": "Stanley FatMax Hammer 20oz", "brand": "Stanley", "model": "FMHT51305", "serial_no": "STA-FM-601", "category": "Hand Tools", "image_url": "https://images.unsplash.com/photo-1676311396794-f14881e9daaa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxoYW1tZXIlMjB3cmVuY2h8ZW58MHx8fHwxNzc3Mjg1NTk5fDA&ixlib=rb-4.1.0&q=85", "location": "6 & 8 Dagmar"},
-    {"asset_id": "MEA-001", "name": "Bosch GLM 50 Laser Measure", "brand": "Bosch", "model": "GLM 50", "serial_no": "BOS-GLM-701", "category": "Measuring Equipment", "image_url": "https://images.pexels.com/photos/32942847/pexels-photo-32942847.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "30 Matong"},
-    {"asset_id": "MEA-002", "name": "Stabila Spirit Level – 1.2m", "brand": "Stabila", "model": "96-2 / 120cm", "serial_no": "STB-120-702", "category": "Measuring Equipment", "image_url": "https://images.pexels.com/photos/32942847/pexels-photo-32942847.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", "location": "119 Buena Vista"},
-]
+import json as _json
+
+def _load_seed_assets():
+    p = ROOT_DIR / "seed_assets.json"
+    if p.exists():
+        with open(p, "r") as f:
+            return _json.load(f)
+    return []
 
 async def seed():
     # Indexes
@@ -659,7 +687,7 @@ async def seed():
         {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"], "full_name": "Naomi Admin", "role": "admin", "property_assignment": "All Properties"},
         {"email": os.environ["SUPERVISOR_EMAIL"], "password": os.environ["SUPERVISOR_PASSWORD"], "full_name": "Mark Supervisor", "role": "supervisor", "property_assignment": "96 Newman Avenue"},
         {"email": os.environ["TRADE_EMAIL"], "password": os.environ["TRADE_PASSWORD"], "full_name": "Johnny Fainges", "role": "trade", "property_assignment": "96 Newman Avenue"},
-    ]
+    ] + REAL_USERS
     for u in seed_users:
         existing = await db.users.find_one({"email": u["email"].lower()})
         if not existing:
@@ -681,17 +709,48 @@ async def seed():
                     {"$set": {"password_hash": hash_password(u["password"])}},
                 )
 
-    # Assets
+    # Assets — load from seed_assets.json (81 real assets)
     if await db.assets.count_documents({}) == 0:
-        for a in SAMPLE_ASSETS:
-            await db.assets.insert_one({
+        seed_data = _load_seed_assets()
+        for a in seed_data:
+            site = a.get("site") or "Warehouse"
+            prop = SITE_TO_PROPERTY.get(site, site)
+            doc = {
                 "id": str(uuid.uuid4()),
-                **a,
-                "status": "Available",
+                "asset_id": a["asset_id"],
+                "name": a["name"],
+                "brand": a.get("brand"),
+                "model": a.get("model"),
+                "serial_no": a.get("serial_no"),
+                "category": a.get("category") or "Hand Tools",
+                "image_url": a.get("image_url"),
+                "location": prop,
+                "status": a.get("status") or "Available",
                 "qr_code": f"{a['asset_id']}|{a['name']}",
                 "total_checkouts": 0,
+                "last_checked_out_by": a.get("checked_out_by"),
                 "created_at": now_utc(),
-            })
+            }
+            await db.assets.insert_one(doc)
+            # If asset is currently checked out, create an open checkout so Returns flow works
+            if doc["status"] == "Checked Out" and a.get("checked_out_by"):
+                user = await db.users.find_one({"full_name": a["checked_out_by"]})
+                ret_date = (now_utc() + timedelta(days=7)).date().isoformat()
+                co = {
+                    "id": str(uuid.uuid4()),
+                    "asset_uid": doc["id"],
+                    "asset_id": doc["asset_id"],
+                    "asset_name": doc["name"],
+                    "user_id": user["id"] if user else "system",
+                    "user_name": a["checked_out_by"],
+                    "property": prop,
+                    "expected_return_date": ret_date,
+                    "actual_return_date": None,
+                    "notes": "Pre-existing checkout (imported)",
+                    "status": "Open",
+                    "timestamp_created": now_utc(),
+                }
+                await db.checkouts.insert_one(co)
 
 # ---------- Lifecycle ----------
 @app.on_event("startup")

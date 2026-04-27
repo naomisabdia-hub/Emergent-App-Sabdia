@@ -5,6 +5,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../src/auth";
 import { COLORS, SPACING, RADIUS, TOUCH, TYPE } from "../src/theme";
+import QRScanner from "../src/QRScanner";
+import PhotoCapture from "../src/PhotoCapture";
 
 type Asset = { id: string; asset_id: string; name: string; status: string; image_url?: string; brand?: string; model?: string; serial_no?: string; category: string };
 
@@ -25,6 +27,20 @@ export default function Checkout() {
   const [notes, setNotes] = useState("");
   const [properties, setProperties] = useState<{ id: string; name: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+  const handleScan = (val: string) => {
+    setShowScanner(false);
+    const parts = val.split("|");
+    const code = parts[0]?.trim();
+    const found = assets.find((a) => a.asset_id === code || a.id === code);
+    if (found) {
+      setSelected(found);
+    } else {
+      Alert.alert("Asset not found", `No available asset matches QR code: ${code}`);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -55,6 +71,7 @@ export default function Checkout() {
         property,
         expected_return_date: returnDate,
         notes: notes || null,
+        checkout_photo_url: photoUri,
       });
       Alert.alert("Checked out", `${selected.name} → ${property}\nDue ${returnDate}`, [
         { text: "OK", onPress: () => router.back() },
@@ -81,7 +98,7 @@ export default function Checkout() {
           <Text style={styles.stepLabel}>STEP 1 · SELECT ASSET</Text>
 
           <TouchableOpacity testID="scan-qr-button" style={styles.scanBtn} activeOpacity={0.85}
-            onPress={() => Alert.alert("QR Scan", "QR scanning will be available soon. Use search below for now.")}
+            onPress={() => setShowScanner(true)}
           >
             <MaterialCommunityIcons name="qrcode-scan" size={26} color={COLORS.textInverse} />
             <Text style={styles.scanBtnText}>TAP TO SCAN QR CODE</Text>
@@ -167,7 +184,11 @@ export default function Checkout() {
             style={[styles.input, { minHeight: 88, textAlignVertical: "top" }]}
             multiline
           />
+
+          <Text style={styles.fieldLabel}>PHOTO (OPTIONAL)</Text>
+          <PhotoCapture testID="checkout-photo" onPhoto={setPhotoUri} label="Take photo of asset before checkout" />
         </ScrollView>
+        <QRScanner visible={showScanner} onClose={() => setShowScanner(false)} onScan={handleScan} />
 
         <View style={styles.footer}>
           <TouchableOpacity testID="submit-checkout" style={styles.submit} onPress={submit} disabled={submitting} activeOpacity={0.85}>

@@ -44,7 +44,7 @@ export default function Dashboard() {
 
   if (!user) return null;
 
-  const isAdminOrSup = user.role === "admin" || user.role === "supervisor";
+  const isAdminOrSup = user.role === "admin";
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -112,7 +112,7 @@ export default function Dashboard() {
               count={summary.overdue}
               label="Overdue Items"
               tone="danger"
-              onPress={() => router.push("/(tabs)/activity")}
+              onPress={() => router.push("/equipment-to-return")}
             />
             <AlertCard
               testID="alert-due-today"
@@ -120,7 +120,15 @@ export default function Dashboard() {
               count={summary.due_today}
               label="Due Today"
               tone="warning"
-              onPress={() => router.push("/(tabs)/activity")}
+              onPress={() => router.push("/equipment-to-return")}
+            />
+            <AlertCard
+              testID="alert-checked-out"
+              icon="arrow-up-box"
+              count={summary.checked_out}
+              label="Equipment to Return"
+              tone="info"
+              onPress={() => router.push("/equipment-to-return")}
             />
             {isAdminOrSup && (
               <AlertCard
@@ -132,14 +140,14 @@ export default function Dashboard() {
                 onPress={() => router.push("/approvals")}
               />
             )}
-            {user.role === "trade" && (
+            {user.role === "team" && (
               <AlertCard
                 testID="alert-my-open"
                 icon="account-clock"
                 count={summary.my_open_checkouts}
                 label="My Open Checkouts"
                 tone="info"
-                onPress={() => router.push("/(tabs)/activity")}
+                onPress={() => router.push("/equipment-to-return")}
               />
             )}
           </>

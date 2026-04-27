@@ -20,7 +20,9 @@ export default function More() {
     items.push({ icon: "clipboard-check", label: "Pending Approvals", onPress: () => router.push("/approvals"), testID: "more-approvals" });
     items.push({ icon: "account-multiple", label: "Team & Users", onPress: () => router.push("/users"), testID: "more-users" });
     items.push({ icon: "history", label: "Audit Trail", onPress: () => router.push("/audit"), testID: "more-audit" });
+    items.push({ icon: "cog", label: "Settings", onPress: () => router.push("/settings"), testID: "more-settings" });
   }
+  items.push({ icon: "alert-octagon", label: "Equipment to Return", onPress: () => router.push("/equipment-to-return"), testID: "more-return" });
   items.push({ icon: "account-circle", label: "My Profile", onPress: () => router.push("/(tabs)/profile"), testID: "more-profile" });
 
   return (

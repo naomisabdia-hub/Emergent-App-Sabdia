@@ -591,6 +591,63 @@ async def reject_booking(booking_id: str, payload: BookingDecision, user: dict =
     )
     return {"ok": True}
 
+
+# ---------- Dashboard analytics ----------
+@api.get("/dashboard/analytics")
+async def dashboard_analytics(user: dict = Depends(require_roles("admin"))):
+    open_co = await db.checkouts.find({"status": "Open"}, {"_id": 0}).to_list(2000)
+    by_holder: dict = {}
+    by_location: dict = {}
+    by_category: dict = {}
+    for c in open_co:
+        h = c.get("user_name") or "—"
+        by_holder[h] = by_holder.get(h, 0) + 1
+        loc = c.get("property") or "—"
+        by_location[loc] = by_location.get(loc, 0) + 1
+    asset_co_ids = [c["asset_uid"] for c in open_co]
+    if asset_co_ids:
+        cats = await db.assets.find({"id": {"$in": asset_co_ids}}, {"_id": 0, "category": 1}).to_list(2000)
+        for a in cats:
+            cat = a.get("category") or "—"
+            by_category[cat] = by_category.get(cat, 0) + 1
+    holders = sorted([{"name": k, "count": v} for k, v in by_holder.items()], key=lambda x: -x["count"])
+    locations = sorted([{"name": k, "count": v} for k, v in by_location.items()], key=lambda x: -x["count"])
+    categories = sorted([{"name": k, "count": v} for k, v in by_category.items()], key=lambda x: -x["count"])
+    return {"by_holder": holders, "by_location": locations, "by_category": categories, "total_open": len(open_co)}
+
+
+@api.get("/dashboard/equipment-to-return")
+async def equipment_to_return(user: dict = Depends(get_current_user)):
+    q: dict = {"status": "Open"}
+    if user["role"] == "team":
+        q["user_id"] = user["id"]
+    items = await db.checkouts.find(q, {"_id": 0}).to_list(500)
+    today = now_utc().date()
+    enriched = []
+    for c in items:
+        out = serialize_dt(c)
+        try:
+            exp = c.get("expected_return_date")
+            if isinstance(exp, str):
+                exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00")).date()
+            elif exp:
+                exp_dt = exp.date() if hasattr(exp, "date") else today
+            else:
+                exp_dt = today
+            days = (exp_dt - today).days
+            out["days_until_due"] = days
+            out["is_overdue"] = days < 0
+            out["is_due_today"] = days == 0
+            out["is_due_soon"] = 0 < days <= 3
+        except Exception:
+            out["days_until_due"] = None
+        a = await db.assets.find_one({"id": c["asset_uid"]}, {"_id": 0, "name": 1, "asset_id": 1, "image_url": 1, "category": 1})
+        out["asset"] = a
+        enriched.append(out)
+    enriched.sort(key=lambda x: (x.get("days_until_due") if x.get("days_until_due") is not None else 999))
+    return enriched
+
+
 # ---------- Dashboard ----------
 @api.get("/dashboard/summary")
 async def dashboard_summary(user: dict = Depends(get_current_user)):
@@ -788,16 +845,27 @@ def _load_seed_assets():
     return []
 
 async def _seed_assets_from_file(force: bool = False):
-    """Insert assets from seed_data/assets.json. If force=True, drop existing first."""
+    """Insert assets from seed_data/assets.json. If force=True, drop existing first.
+    Also creates open checkout records for any asset whose seed status is 'Checked Out'.
+    """
     data = _load_seed_assets()
     if not data:
         return 0
     if force:
         await db.assets.delete_many({})
+        await db.checkouts.delete_many({})
     inserted = 0
+    # Build name → user lookup so we can wire pre-existing checkouts to the right user
+    user_rows = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "email": 1}).to_list(500)
+    name_to_user = {(u.get("full_name") or "").strip().lower(): u for u in user_rows}
+    today = now_utc()
+    default_due = (today + timedelta(days=7)).date().isoformat()
     for a in data:
         if not force and await db.assets.find_one({"asset_id": a["asset_id"]}):
             continue
+        asset_status = a.get("status") or "Available"
+        if asset_status not in ("Available", "Checked Out", "Maintenance", "Booked"):
+            asset_status = "Available"
         doc = {
             "id": str(uuid.uuid4()),
             "asset_id": a["asset_id"],
@@ -808,13 +876,39 @@ async def _seed_assets_from_file(force: bool = False):
             "category": a.get("category") or "Hand Tools",
             "image_url": a.get("image_url"),
             "location": a.get("location") or "Warehouse",
-            "status": "Available",
+            "status": asset_status,
             "qr_code": f"{a['asset_id']}|{a['name']}",
             "total_checkouts": 0,
             "created_at": now_utc(),
         }
         await db.assets.insert_one(doc)
         inserted += 1
+        # If pre-existing checkout, create matching open checkout
+        if asset_status == "Checked Out" and a.get("checked_out_by"):
+            holder_key = a["checked_out_by"].strip().lower()
+            holder = name_to_user.get(holder_key)
+            if holder:
+                co = {
+                    "id": str(uuid.uuid4()),
+                    "asset_uid": doc["id"],
+                    "asset_id": doc["asset_id"],
+                    "asset_name": doc["name"],
+                    "user_id": holder["id"],
+                    "user_name": a["checked_out_by"],
+                    "user_email": holder.get("email"),
+                    "property": doc["location"],
+                    "expected_return_date": default_due,
+                    "actual_return_date": None,
+                    "notes": "Imported from asset register",
+                    "checkout_photo_url": None,
+                    "status": "Open",
+                    "timestamp_created": now_utc(),
+                }
+                await db.checkouts.insert_one(co)
+                await db.assets.update_one({"id": doc["id"]}, {"$inc": {"total_checkouts": 1}})
+            else:
+                # Holder doesn't exist as user — leave asset as Available so app remains functional
+                await db.assets.update_one({"id": doc["id"]}, {"$set": {"status": "Available"}})
     return inserted
 
 async def seed():

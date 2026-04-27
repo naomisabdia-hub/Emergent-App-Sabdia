@@ -48,6 +48,8 @@ export default function RootLayout() {
               <Stack.Screen name="approvals" />
               <Stack.Screen name="audit" />
               <Stack.Screen name="users" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="equipment-to-return" />
             </Stack>
           </AuthGuard>
         </AuthProvider>

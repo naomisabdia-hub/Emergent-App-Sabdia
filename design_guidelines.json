@@ -1,0 +1,206 @@
+{
+  "theme_and_archetype": {
+    "domain": "Construction, Field Management, Logistics",
+    "theme": "LIGHT",
+    "archetype": "Archetype 2 (The Performance Pro) / Tactical Minimalism",
+    "tone": "Rugged, Professional, Safe, Field-Ready, Command-Center",
+    "description": "Designed for tradies and supervisors on active construction sites. The UI avoids soft, playful SaaS curves. It relies on high-visibility 'Safety Orange', hard borders, and maximum contrast. Generous hit areas and blocky layouts ensure easy operation with gloved hands in bright sunlight."
+  },
+  "colors": {
+    "primary": {
+      "default": "#FF5E00",
+      "active": "#CC4B00",
+      "contrast_text": "#FFFFFF"
+    },
+    "background": {
+      "default": "#F3F4F6",
+      "surface": "#FFFFFF",
+      "surface_dark": "#111827"
+    },
+    "text": {
+      "primary": "#111827",
+      "secondary": "#4B5563",
+      "inverse": "#FFFFFF",
+      "muted": "#9CA3AF"
+    },
+    "border": {
+      "default": "#E5E7EB",
+      "heavy": "#111827",
+      "active": "#FF5E00"
+    },
+    "status": {
+      "success": { "bg": "#D1FAE5", "text": "#065F46", "icon": "#10B981" },
+      "warning": { "bg": "#FEF3C7", "text": "#92400E", "icon": "#F59E0B" },
+      "danger": { "bg": "#FEE2E2", "text": "#991B1B", "icon": "#EF4444" },
+      "info": { "bg": "#DBEAFE", "text": "#1E40AF", "icon": "#3B82F6" }
+    }
+  },
+  "typography": {
+    "font_strategy": "High-legibility geometric sans-serif for body, condensed/heavy weights for headings. Use system default sans-serif as the base, keeping weights bold and distinct.",
+    "scale": {
+      "h1": { "fontSize": 32, "lineHeight": 40, "fontWeight": "900", "letterSpacing": -1 },
+      "h2": { "fontSize": 24, "lineHeight": 32, "fontWeight": "800", "letterSpacing": -0.5 },
+      "h3": { "fontSize": 20, "lineHeight": 28, "fontWeight": "700" },
+      "body_large": { "fontSize": 18, "lineHeight": 28, "fontWeight": "400" },
+      "body_regular": { "fontSize": 16, "lineHeight": 24, "fontWeight": "400" },
+      "label": { "fontSize": 12, "lineHeight": 16, "fontWeight": "800", "textTransform": "uppercase", "letterSpacing": 1 }
+    }
+  },
+  "spacing_and_layout": {
+    "touch_targets": {
+      "minimum_height": 56,
+      "description": "CRITICAL: All buttons, inputs, and list items must be at least 56px tall to accommodate thick gloves."
+    },
+    "padding_scale": {
+      "xs": 4,
+      "sm": 8,
+      "md": 16,
+      "lg": 24,
+      "xl": 32,
+      "2xl": 48
+    },
+    "border_radius": {
+      "none": 0,
+      "sm": 4,
+      "md": 8,
+      "description": "Keep components boxy and rigid. Max radius is 8px. Do not use pill-shaped buttons."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": {
+        "backgroundColor": "colors.primary.default",
+        "borderRadius": "spacing_and_layout.border_radius.sm",
+        "minHeight": 56,
+        "justifyContent": "center",
+        "alignItems": "center",
+        "borderWidth": 2,
+        "borderColor": "colors.primary.default"
+      },
+      "secondary": {
+        "backgroundColor": "transparent",
+        "minHeight": 56,
+        "borderWidth": 2,
+        "borderColor": "colors.text.primary",
+        "borderRadius": "spacing_and_layout.border_radius.sm"
+      },
+      "ghost": {
+        "backgroundColor": "transparent",
+        "minHeight": 56
+      }
+    },
+    "cards": {
+      "default": {
+        "backgroundColor": "colors.background.surface",
+        "borderRadius": "spacing_and_layout.border_radius.sm",
+        "borderWidth": 1,
+        "borderColor": "colors.border.default",
+        "padding": "spacing_and_layout.padding_scale.lg",
+        "shadowColor": "#000",
+        "shadowOffset": { "width": 0, "height": 2 },
+        "shadowOpacity": 0.05,
+        "shadowRadius": 4,
+        "elevation": 2
+      },
+      "heavy": {
+        "borderWidth": 2,
+        "borderColor": "colors.border.heavy"
+      }
+    },
+    "inputs": {
+      "default": {
+        "minHeight": 56,
+        "backgroundColor": "colors.background.surface",
+        "borderWidth": 1,
+        "borderColor": "colors.border.default",
+        "borderRadius": "spacing_and_layout.border_radius.sm",
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "color": "colors.text.primary"
+      },
+      "active": {
+        "borderColor": "colors.primary.default",
+        "borderWidth": 2
+      }
+    }
+  },
+  "screens": {
+    "login": {
+      "layout": "Center-aligned content with a heavy industrial logo header. Full-width primary button. High contrast background.",
+      "features": ["Email/Password Inputs", "JWT Auth handler", "Clear Error states"]
+    },
+    "dashboard": {
+      "layout": "Bento-style grid for metrics (Current Status, Overdue). Uses cards with thick colored left-borders (Green/Yellow/Red) to indicate status severity at a glance. Quick action buttons for Check-out/Check-in fixed at the bottom."
+    },
+    "asset_register": {
+      "layout": "Search bar at top (sticky). Horizontal scrolling pill-list for categories. Flat list of assets. Each list item should be minimum 80px height, containing a square image thumbnail, bold title, and status badge."
+    },
+    "asset_detail": {
+      "layout": "Large hero image (max 40% screen height). Tactical specs layout (2-column grid for Brand, Model, Serial). Large full-width Check In / Check Out button pinned to safe area bottom."
+    },
+    "forms_check_in_out": {
+      "layout": "Step-by-step or single long scrolling form with massive touch targets.",
+      "check_in_specifics": "Condition selector MUST be 3 massive color-coded buttons side-by-side (Green: Good, Yellow: Fair, Red: Damaged). If Damaged is selected, a 'Take Photo' button appears.",
+      "qr_scanner": "Include a prominent 'Scan QR' button with a camera icon near the asset selection field. Even if fully functional later, the UI must have the entry point ready."
+    }
+  },
+  "media": {
+    "icons": {
+      "library": "@expo/vector-icons / MaterialCommunityIcons",
+      "mapping": {
+        "access_ladders": "ladder",
+        "power_tools": "drill",
+        "gardening": "leaf",
+        "power_equipment": "engine",
+        "material_handling": "forklift",
+        "hand_tools": "hammer-wrench",
+        "measuring_equipment": "tape-measure",
+        "scan_qr": "qrcode-scan",
+        "camera": "camera",
+        "check_in": "arrow-down-box",
+        "check_out": "arrow-up-box"
+      }
+    },
+    "category_images": {
+      "access_ladders": {
+        "url": "https://images.unsplash.com/photo-1603080296081-81f47189df91?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxjb25zdHJ1Y3Rpb24lMjBsYWRkZXJ8ZW58MHx8fHwxNzc3Mjg1NTk5fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "yellow and black metal ladder"
+      },
+      "power_tools": {
+        "url": "https://images.pexels.com/photos/30413424/pexels-photo-30413424.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "red electric drill"
+      },
+      "gardening": {
+        "url": "https://images.pexels.com/photos/11397558/pexels-photo-11397558.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "gardening gloves, saw, and pruning shears"
+      },
+      "power_equipment": {
+        "url": "https://images.pexels.com/photos/5693845/pexels-photo-5693845.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "industrial generator"
+      },
+      "material_handling": {
+        "url": "https://images.pexels.com/photos/29491416/pexels-photo-29491416.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "diesel forklift"
+      },
+      "hand_tools": {
+        "url": "https://images.unsplash.com/photo-1676311396794-f14881e9daaa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxoYW1tZXIlMjB3cmVuY2h8ZW58MHx8fHwxNzc3Mjg1NTk5fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "hammer and wrench"
+      },
+      "measuring_equipment": {
+        "url": "https://images.pexels.com/photos/32942847/pexels-photo-32942847.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "measuring tape"
+      }
+    }
+  },
+  "testing": {
+    "data_testid_rules": "All interactive elements (buttons, inputs, tabs, list items) MUST include a data-testid attribute. Use kebab-case and role-based naming (e.g., 'login-submit-button', 'asset-item-123', 'scan-qr-button')."
+  },
+  "instructions_to_main_agent": [
+    "Initialize standard Expo project with React Navigation.",
+    "Ensure all touchable areas (Pressable, TouchableOpacity) wrap their content completely and enforce the 56px minimum height.",
+    "Avoid generic border radii. The UI should look 'blocky' (max 4px-8px radius).",
+    "Use safe area insets to prevent UI from hiding behind notches, but pin primary action buttons (like Submit or Scan QR) strictly to the bottom of the screen.",
+    "For the MVP, dummy data for the ~10 assets should use the Unsplash/Pexels URLs provided in this file.",
+    "Build the core JWT structure with a mock backend or simple Context API for now, simulating Admin, Supervisor, and Trade roles."
+  ]
+}

@@ -4,7 +4,7 @@ import axios, { AxiosInstance } from "axios";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-export type Role = "admin" | "supervisor" | "trade";
+export type Role = "admin" | "team";
 export type User = {
   id: string;
   email: string;

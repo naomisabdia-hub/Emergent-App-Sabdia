@@ -126,6 +126,16 @@ export default function Settings() {
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/custom-fields")} style={styles.actionRow}>
+            <View style={[styles.actionIcon, { backgroundColor: COLORS.successBg }]}>
+              <MaterialCommunityIcons name="form-textbox" size={22} color={COLORS.successText} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Custom Fields</Text>
+              <Text style={styles.actionSub}>Add dynamic fields to assets without code changes</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: 8 }}>

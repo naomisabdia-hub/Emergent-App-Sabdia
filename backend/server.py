@@ -123,6 +123,30 @@ class UpdateUserIn(BaseModel):
     password: Optional[str] = None
     status: Optional[Literal["Active", "Deactivated"]] = None
 
+
+class CustomFieldIn(BaseModel):
+    label: str
+    field_type: Literal["text", "number", "date", "select", "boolean", "textarea"]
+    options: Optional[List[str]] = None
+    required: bool = False
+    applies_to: Literal["asset", "checkout", "checkin"] = "asset"
+    order: int = 0
+    placeholder: Optional[str] = None
+
+
+class CustomFieldUpdate(BaseModel):
+    label: Optional[str] = None
+    field_type: Optional[Literal["text", "number", "date", "select", "boolean", "textarea"]] = None
+    options: Optional[List[str]] = None
+    required: Optional[bool] = None
+    order: Optional[int] = None
+    placeholder: Optional[str] = None
+    status: Optional[Literal["Active", "Disabled"]] = None
+
+
+class AssetCustomFieldValues(BaseModel):
+    values: dict
+
 class AssetIn(BaseModel):
     asset_id: str
     name: str
@@ -810,6 +834,111 @@ async def reset_password(user_id: str, admin: dict = Depends(require_roles("admi
     await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(new_pw)}})
     logger.info(f"[RESET] {admin['full_name']} reset password for {target['full_name']} → {new_pw}")
     return {"ok": True, "new_password": new_pw}
+
+
+# ---------- Custom Fields ----------
+@api.get("/custom-fields")
+async def list_custom_fields(applies_to: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q: dict = {"status": {"$ne": "Disabled"}}
+    if applies_to:
+        q["applies_to"] = applies_to
+    items = await db.custom_fields.find(q, {"_id": 0}).sort("order", 1).to_list(200)
+    return [serialize_dt(i) for i in items]
+
+
+@api.post("/custom-fields")
+async def create_custom_field(payload: CustomFieldIn, admin: dict = Depends(require_roles("admin"))):
+    # Generate stable key from label (lowercase + underscore)
+    import re as _re
+    key = _re.sub(r"[^a-z0-9]+", "_", payload.label.strip().lower()).strip("_")
+    if not key:
+        raise HTTPException(400, "Label must contain letters or numbers")
+    if await db.custom_fields.find_one({"key": key, "applies_to": payload.applies_to}):
+        raise HTTPException(400, "A field with this name already exists")
+    if payload.field_type == "select" and (not payload.options or len(payload.options) == 0):
+        raise HTTPException(400, "Select field requires at least one option")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "key": key,
+        "label": payload.label,
+        "field_type": payload.field_type,
+        "options": payload.options or [],
+        "required": payload.required,
+        "applies_to": payload.applies_to,
+        "order": payload.order,
+        "placeholder": payload.placeholder,
+        "status": "Active",
+        "created_at": now_utc(),
+        "created_by": admin["full_name"],
+    }
+    await db.custom_fields.insert_one(doc)
+    await db.audit.insert_one({
+        "id": str(uuid.uuid4()),
+        "timestamp": now_utc(),
+        "user_id": admin["id"],
+        "user_name": admin["full_name"],
+        "action": "custom_field_created",
+        "entity": "custom_field",
+        "details": f"Created custom field '{payload.label}' ({payload.field_type}) for {payload.applies_to}",
+    })
+    return serialize_dt({k: v for k, v in doc.items() if k != "_id"})
+
+
+@api.patch("/custom-fields/{field_id}")
+async def update_custom_field(field_id: str, payload: CustomFieldUpdate, admin: dict = Depends(require_roles("admin"))):
+    target = await db.custom_fields.find_one({"id": field_id})
+    if not target:
+        raise HTTPException(404, "Field not found")
+    updates = {}
+    for k in ("label", "field_type", "options", "required", "order", "placeholder", "status"):
+        v = getattr(payload, k)
+        if v is not None:
+            updates[k] = v
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    await db.custom_fields.update_one({"id": field_id}, {"$set": updates})
+    out = await db.custom_fields.find_one({"id": field_id}, {"_id": 0})
+    return serialize_dt(out)
+
+
+@api.delete("/custom-fields/{field_id}")
+async def delete_custom_field(field_id: str, admin: dict = Depends(require_roles("admin"))):
+    target = await db.custom_fields.find_one({"id": field_id})
+    if not target:
+        raise HTTPException(404, "Field not found")
+    # Soft delete (mark Disabled) so existing values aren't orphaned
+    await db.custom_fields.update_one({"id": field_id}, {"$set": {"status": "Disabled"}})
+    await db.audit.insert_one({
+        "id": str(uuid.uuid4()),
+        "timestamp": now_utc(),
+        "user_id": admin["id"],
+        "user_name": admin["full_name"],
+        "action": "custom_field_deleted",
+        "entity": "custom_field",
+        "details": f"Disabled '{target['label']}'",
+    })
+    return {"ok": True}
+
+
+@api.put("/assets/{asset_id}/custom-fields")
+async def set_asset_custom_fields(asset_id: str, payload: AssetCustomFieldValues, user: dict = Depends(get_current_user)):
+    asset = await db.assets.find_one({"id": asset_id})
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    # Only admin can edit custom field values (configurable later)
+    if user["role"] != "admin":
+        raise HTTPException(403, "Only admins can edit custom field values")
+    # Validate against active fields
+    fields = await db.custom_fields.find({"applies_to": "asset", "status": {"$ne": "Disabled"}}, {"_id": 0}).to_list(200)
+    field_keys = {f["key"]: f for f in fields}
+    sanitized = {}
+    for k, v in (payload.values or {}).items():
+        if k not in field_keys:
+            continue  # Ignore unknown keys silently
+        sanitized[k] = v
+    await db.assets.update_one({"id": asset_id}, {"$set": {"custom_fields": sanitized}})
+    return {"ok": True, "custom_fields": sanitized}
+
 
 # ---------- Seed ----------
 PROPERTIES = [

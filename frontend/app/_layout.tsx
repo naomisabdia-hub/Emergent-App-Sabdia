@@ -50,6 +50,7 @@ export default function RootLayout() {
               <Stack.Screen name="users" />
               <Stack.Screen name="settings" />
               <Stack.Screen name="equipment-to-return" />
+              <Stack.Screen name="custom-fields" />
             </Stack>
           </AuthGuard>
         </AuthProvider>

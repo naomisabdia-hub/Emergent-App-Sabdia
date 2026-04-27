@@ -103,16 +103,24 @@ export default function Login() {
           <View style={styles.demoWrap}>
             <Text style={styles.demoTitle}>QUICK DEMO LOGINS</Text>
             <TouchableOpacity testID="demo-admin" style={styles.demoBtn} onPress={() => fillAs("naomi@sabdia.com", "Admin123!")}>
-              <MaterialCommunityIcons name="shield-account" size={20} color={COLORS.text} />
-              <Text style={styles.demoText}>Admin · Naomi</Text>
+              <View style={[styles.demoIcon, { backgroundColor: COLORS.primary + "22" }]}>
+                <MaterialCommunityIcons name="shield-account" size={18} color={COLORS.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.demoText}>Naomi Durcau</Text>
+                <Text style={styles.demoSub}>Admin · full control</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
-            <TouchableOpacity testID="demo-supervisor" style={styles.demoBtn} onPress={() => fillAs("mark@sabdia.com", "Super123!")}>
-              <MaterialCommunityIcons name="account-tie" size={20} color={COLORS.text} />
-              <Text style={styles.demoText}>Supervisor · Mark</Text>
-            </TouchableOpacity>
-            <TouchableOpacity testID="demo-trade" style={styles.demoBtn} onPress={() => fillAs("johnny@sabdia.com", "Trade123!")}>
-              <MaterialCommunityIcons name="hammer-wrench" size={20} color={COLORS.text} />
-              <Text style={styles.demoText}>Trade · Johnny</Text>
+            <TouchableOpacity testID="demo-team" style={styles.demoBtn} onPress={() => fillAs("johnny@sabdia.com", "Team123!")}>
+              <View style={[styles.demoIcon, { backgroundColor: COLORS.text + "22" }]}>
+                <MaterialCommunityIcons name="hammer-wrench" size={18} color={COLORS.text} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.demoText}>Johnny Fainges</Text>
+                <Text style={styles.demoSub}>Team · check out / in</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -177,11 +185,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: RADIUS.sm,
+    borderRadius: 10,
     paddingHorizontal: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
   },
-  demoText: { ...TYPE.body, fontWeight: "600" },
+  demoIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  demoText: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  demoSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 1 },
 });

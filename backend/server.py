@@ -90,7 +90,7 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    role: Literal["admin", "supervisor", "trade"] = "trade"
+    role: Literal["admin", "team"] = "team"
     property_assignment: Optional[str] = None
     phone: Optional[str] = None
 
@@ -106,6 +106,22 @@ class UserOut(BaseModel):
     property_assignment: Optional[str] = None
     phone: Optional[str] = None
     status: str = "Active"
+
+class InviteUserIn(BaseModel):
+    email: EmailStr
+    full_name: str
+    role: Literal["admin", "team"] = "team"
+    property_assignment: Optional[str] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None  # Admin can set initial password; otherwise auto-generated
+
+class UpdateUserIn(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[Literal["admin", "team"]] = None
+    property_assignment: Optional[str] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    status: Optional[Literal["Active", "Deactivated"]] = None
 
 class AssetIn(BaseModel):
     asset_id: str
@@ -181,6 +197,8 @@ async def login(payload: LoginIn):
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if user.get("status") == "Deactivated":
+        raise HTTPException(status_code=403, detail="Account deactivated. Contact administrator.")
     token = create_token(user["id"], user["email"], user["role"])
     user_out = {
         "id": user["id"],
@@ -253,20 +271,44 @@ async def list_assets(
             {"brand": {"$regex": q, "$options": "i"}},
         ]
     projection = {"_id": 0}
-    if user["role"] == "trade":
+    if user["role"] == "team":
         projection.update({"cost": 0, "insurance_value": 0, "maintenance_notes": 0})
     items = await db.assets.find(query, projection).sort("name", 1).to_list(500)
-    return [serialize_dt(i) for i in items]
+    # Enrich with current holder + checkout info
+    open_cos = await db.checkouts.find({"status": "Open"}, {"_id": 0, "asset_uid": 1, "user_name": 1, "user_id": 1, "expected_return_date": 1, "property": 1, "timestamp_created": 1}).to_list(2000)
+    co_map = {c["asset_uid"]: c for c in open_cos}
+    enriched = []
+    for i in items:
+        d = serialize_dt(i)
+        co = co_map.get(d.get("id"))
+        if co:
+            d["current_holder"] = co.get("user_name")
+            d["current_holder_user_id"] = co.get("user_id")
+            d["current_property"] = co.get("property")
+            d["expected_return_date"] = co.get("expected_return_date")
+            d["checked_out_at"] = co.get("timestamp_created").isoformat() if isinstance(co.get("timestamp_created"), datetime) else co.get("timestamp_created")
+        else:
+            d["current_holder"] = None
+        enriched.append(d)
+    return enriched
 
 @api.get("/assets/{asset_id}")
 async def get_asset(asset_id: str, user: dict = Depends(get_current_user)):
     projection = {"_id": 0}
-    if user["role"] == "trade":
+    if user["role"] == "team":
         projection.update({"cost": 0, "insurance_value": 0, "maintenance_notes": 0})
     asset = await db.assets.find_one({"id": asset_id}, projection)
     if not asset:
         raise HTTPException(404, "Asset not found")
-    return serialize_dt(asset)
+    out = serialize_dt(asset)
+    co = await db.checkouts.find_one({"asset_uid": asset_id, "status": "Open"}, {"_id": 0})
+    if co:
+        out["current_holder"] = co.get("user_name")
+        out["current_holder_user_id"] = co.get("user_id")
+        out["current_property"] = co.get("property")
+        out["expected_return_date"] = co.get("expected_return_date")
+        out["checked_out_at"] = co.get("timestamp_created").isoformat() if isinstance(co.get("timestamp_created"), datetime) else co.get("timestamp_created")
+    return out
 
 @api.post("/assets")
 async def create_asset(payload: AssetIn, user: dict = Depends(require_roles("admin"))):
@@ -389,10 +431,8 @@ async def list_checkouts(
     query: dict = {}
     if open_only:
         query["status"] = "Open"
-    if mine or user["role"] == "trade":
+    if mine or user["role"] == "team":
         query["user_id"] = user["id"]
-    elif user["role"] == "supervisor" and user.get("property_assignment") and user.get("property_assignment") != "All Properties":
-        query["property"] = user["property_assignment"]
     items = await db.checkouts.find(query, {"_id": 0}).sort("timestamp_created", -1).to_list(500)
     return [await _enrich_checkout(i) for i in items]
 
@@ -405,6 +445,9 @@ async def create_checkin(payload: CheckinIn, user: dict = Depends(get_current_us
     open_co = await db.checkouts.find_one({"asset_uid": payload.asset_id, "status": "Open"})
     if not open_co:
         raise HTTPException(400, "No open checkout for this asset")
+    # Permission: only the original checker OR an admin can check in
+    if user["role"] != "admin" and open_co["user_id"] != user["id"]:
+        raise HTTPException(403, f"Only {open_co['user_name']} or an Admin can check in this asset.")
     ci = {
         "id": str(uuid.uuid4()),
         "asset_uid": payload.asset_id,
@@ -444,10 +487,8 @@ async def create_checkin(payload: CheckinIn, user: dict = Depends(get_current_us
 @api.get("/checkins")
 async def list_checkins(user: dict = Depends(get_current_user)):
     query: dict = {}
-    if user["role"] == "trade":
+    if user["role"] == "team":
         query["user_id"] = user["id"]
-    elif user["role"] == "supervisor" and user.get("property_assignment") and user.get("property_assignment") != "All Properties":
-        query["property_returned_at"] = user["property_assignment"]
     items = await db.checkins.find(query, {"_id": 0}).sort("timestamp_created", -1).to_list(500)
     return [serialize_dt(i) for i in items]
 
@@ -512,15 +553,13 @@ async def list_bookings(
     query: dict = {}
     if status_filter:
         query["status"] = status_filter
-    if user["role"] == "trade":
+    if user["role"] == "team":
         query["user_id"] = user["id"]
-    elif user["role"] == "supervisor" and user.get("property_assignment") and user.get("property_assignment") != "All Properties":
-        query["property"] = user["property_assignment"]
     items = await db.bookings.find(query, {"_id": 0}).sort("request_date", -1).to_list(500)
     return [await _enrich_booking(i) for i in items]
 
 @api.post("/bookings/{booking_id}/approve")
-async def approve_booking(booking_id: str, user: dict = Depends(require_roles("admin", "supervisor"))):
+async def approve_booking(booking_id: str, user: dict = Depends(require_roles("admin"))):
     bk = await db.bookings.find_one({"id": booking_id})
     if not bk:
         raise HTTPException(404, "Booking not found")
@@ -542,7 +581,7 @@ async def approve_booking(booking_id: str, user: dict = Depends(require_roles("a
     return {"ok": True}
 
 @api.post("/bookings/{booking_id}/reject")
-async def reject_booking(booking_id: str, payload: BookingDecision, user: dict = Depends(require_roles("admin", "supervisor"))):
+async def reject_booking(booking_id: str, payload: BookingDecision, user: dict = Depends(require_roles("admin"))):
     bk = await db.bookings.find_one({"id": booking_id})
     if not bk:
         raise HTTPException(404, "Booking not found")
@@ -555,10 +594,7 @@ async def reject_booking(booking_id: str, payload: BookingDecision, user: dict =
 # ---------- Dashboard ----------
 @api.get("/dashboard/summary")
 async def dashboard_summary(user: dict = Depends(get_current_user)):
-    asset_query: dict = {}
     co_query: dict = {"status": "Open"}
-    if user["role"] == "supervisor" and user.get("property_assignment") and user.get("property_assignment") != "All Properties":
-        co_query["property"] = user["property_assignment"]
 
     total_assets = await db.assets.count_documents({})
     out_count = await db.assets.count_documents({"status": "Checked Out"})
@@ -587,7 +623,7 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
     pending_bookings = await db.bookings.count_documents({"status": "Pending"})
 
     my_open = 0
-    if user["role"] == "trade":
+    if user["role"] == "team":
         my_open = await db.checkouts.count_documents({"user_id": user["id"], "status": "Open"})
 
     return {
@@ -612,57 +648,174 @@ async def list_audit(user: dict = Depends(require_roles("admin"))):
 # ---------- Users (Admin) ----------
 @api.get("/users")
 async def list_users(user: dict = Depends(require_roles("admin"))):
-    items = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+    items = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("full_name", 1).to_list(500)
     return [serialize_dt(i) for i in items]
+
+import secrets, string
+
+def _gen_password() -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(10))
+
+@api.post("/users")
+async def invite_user(payload: InviteUserIn, admin: dict = Depends(require_roles("admin"))):
+    email = payload.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(400, "User with that email already exists")
+    initial_pw = payload.password or _gen_password()
+    new_user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "password_hash": hash_password(initial_pw),
+        "full_name": payload.full_name,
+        "role": payload.role,
+        "property_assignment": payload.property_assignment,
+        "phone": payload.phone,
+        "status": "Active",
+        "invited_by": admin["full_name"],
+        "created_at": now_utc(),
+    }
+    await db.users.insert_one(new_user)
+    await db.audit.insert_one({
+        "id": str(uuid.uuid4()),
+        "timestamp": now_utc(),
+        "user_id": admin["id"],
+        "user_name": admin["full_name"],
+        "action": "user_invited",
+        "entity": "user",
+        "details": f"Invited {payload.full_name} <{email}> as {payload.role}",
+    })
+    logger.info(f"[INVITE] {admin['full_name']} invited {payload.full_name} <{email}> · role={payload.role} · initial_pw={initial_pw}")
+    out = {k: v for k, v in new_user.items() if k not in ("password_hash", "_id")}
+    out["initial_password"] = initial_pw  # Return so admin can copy/share
+    return serialize_dt(out)
+
+@api.patch("/users/{user_id}")
+async def update_user(user_id: str, payload: UpdateUserIn, admin: dict = Depends(require_roles("admin"))):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(404, "User not found")
+    updates = {}
+    for k in ("full_name", "role", "property_assignment", "phone", "status"):
+        v = getattr(payload, k)
+        if v is not None:
+            updates[k] = v
+    if payload.password:
+        updates["password_hash"] = hash_password(payload.password)
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    await db.users.update_one({"id": user_id}, {"$set": updates})
+    await db.audit.insert_one({
+        "id": str(uuid.uuid4()),
+        "timestamp": now_utc(),
+        "user_id": admin["id"],
+        "user_name": admin["full_name"],
+        "action": "user_updated",
+        "entity": "user",
+        "details": f"Updated {target['full_name']}: {list(updates.keys())}",
+    })
+    out = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return serialize_dt(out)
+
+@api.post("/users/{user_id}/deactivate")
+async def deactivate_user(user_id: str, admin: dict = Depends(require_roles("admin"))):
+    if user_id == admin["id"]:
+        raise HTTPException(400, "You cannot deactivate yourself")
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(404, "User not found")
+    await db.users.update_one({"id": user_id}, {"$set": {"status": "Deactivated"}})
+    await db.audit.insert_one({
+        "id": str(uuid.uuid4()),
+        "timestamp": now_utc(),
+        "user_id": admin["id"],
+        "user_name": admin["full_name"],
+        "action": "user_deactivated",
+        "entity": "user",
+        "details": f"Deactivated {target['full_name']}",
+    })
+    return {"ok": True}
+
+@api.post("/users/{user_id}/reactivate")
+async def reactivate_user(user_id: str, admin: dict = Depends(require_roles("admin"))):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(404, "User not found")
+    await db.users.update_one({"id": user_id}, {"$set": {"status": "Active"}})
+    return {"ok": True}
+
+@api.post("/users/{user_id}/reset-password")
+async def reset_password(user_id: str, admin: dict = Depends(require_roles("admin"))):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(404, "User not found")
+    new_pw = _gen_password()
+    await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(new_pw)}})
+    logger.info(f"[RESET] {admin['full_name']} reset password for {target['full_name']} → {new_pw}")
+    return {"ok": True, "new_password": new_pw}
 
 # ---------- Seed ----------
 PROPERTIES = [
-    "96 Newman Avenue",
-    "6 & 8 Dagmar",
-    "119 Buena Vista",
-    "30 Matong",
-    "79 Lapraik",
     "Warehouse",
     "On Site",
-]
-
-SITE_TO_PROPERTY = {
-    "Warehouse": "Warehouse",
-    "On Site": "On Site",
-    "30 Matong": "30 Matong",
-    "79 Lapraik": "79 Lapraik",
-    "6 Dagmar": "6 & 8 Dagmar",
-    "119 Buena Vista": "119 Buena Vista",
-    "96 Newman Avenue": "96 Newman Avenue",
-}
-
-# Real users mentioned in the asset data
-REAL_USERS = [
-    {"email": "naomi.durcau@sabdia.com", "password": "Sabdia123!", "full_name": "Naomi Durcau", "role": "admin", "property_assignment": "All Properties"},
-    {"email": "johnny@sabdia.com", "password": "Trade123!", "full_name": "Johnny Fainges", "role": "trade", "property_assignment": "6 & 8 Dagmar"},
-    {"email": "tallisha@sabdia.com", "password": "Trade123!", "full_name": "Tallisha Emes", "role": "trade", "property_assignment": "30 Matong"},
-    {"email": "steve@sabdia.com", "password": "Trade123!", "full_name": "Steve Palmer", "role": "trade", "property_assignment": "On Site"},
+    "30 Matong",
+    "79 Lapraik",
+    "6 Dagmar",
+    "8 Dagmar",
+    "119 Buena Vista",
+    "96 Newman Avenue",
 ]
 
 CATEGORIES = [
     "Access",
     "Power Tools",
-    "Gardening",
     "Power Equipment",
-    "Material Handling",
-    "Hand Tools",
-    "Measuring Equipment",
     "Power Tool Accessory",
+    "Hand Tools",
+    "Gardening",
+    "Material Handling",
+    "Measuring Equipment",
+    "Accessory",
 ]
 
 import json as _json
 
 def _load_seed_assets():
-    p = ROOT_DIR / "seed_assets.json"
+    p = ROOT_DIR / "seed_data" / "assets.json"
     if p.exists():
         with open(p, "r") as f:
             return _json.load(f)
     return []
+
+async def _seed_assets_from_file(force: bool = False):
+    """Insert assets from seed_data/assets.json. If force=True, drop existing first."""
+    data = _load_seed_assets()
+    if not data:
+        return 0
+    if force:
+        await db.assets.delete_many({})
+    inserted = 0
+    for a in data:
+        if not force and await db.assets.find_one({"asset_id": a["asset_id"]}):
+            continue
+        doc = {
+            "id": str(uuid.uuid4()),
+            "asset_id": a["asset_id"],
+            "name": a["name"],
+            "brand": a.get("brand"),
+            "model": a.get("model"),
+            "serial_no": a.get("serial_no"),
+            "category": a.get("category") or "Hand Tools",
+            "image_url": a.get("image_url"),
+            "location": a.get("location") or "Warehouse",
+            "status": "Available",
+            "qr_code": f"{a['asset_id']}|{a['name']}",
+            "total_checkouts": 0,
+            "created_at": now_utc(),
+        }
+        await db.assets.insert_one(doc)
+        inserted += 1
+    return inserted
 
 async def seed():
     # Indexes
@@ -674,7 +827,7 @@ async def seed():
     await db.checkins.create_index("id", unique=True)
     await db.bookings.create_index("id", unique=True)
 
-    # Properties
+    # Properties — replace if changed
     if await db.properties.count_documents({}) == 0:
         for p in PROPERTIES:
             await db.properties.insert_one({"id": str(uuid.uuid4()), "name": p, "address": "", "status": "Active"})
@@ -684,12 +837,14 @@ async def seed():
         for c in CATEGORIES:
             await db.categories.insert_one({"id": str(uuid.uuid4()), "name": c, "description": "", "status": "Active"})
 
-    # Users
+    # Migrate any old users with role 'supervisor' or 'trade' → 'team'
+    await db.users.update_many({"role": {"$in": ["supervisor", "trade"]}}, {"$set": {"role": "team"}})
+
+    # Seed admin user (idempotent)
     seed_users = [
-        {"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"], "full_name": "Naomi Admin", "role": "admin", "property_assignment": "All Properties"},
-        {"email": os.environ["SUPERVISOR_EMAIL"], "password": os.environ["SUPERVISOR_PASSWORD"], "full_name": "Mark Supervisor", "role": "supervisor", "property_assignment": "96 Newman Avenue"},
-        {"email": os.environ["TRADE_EMAIL"], "password": os.environ["TRADE_PASSWORD"], "full_name": "Johnny Fainges", "role": "trade", "property_assignment": "96 Newman Avenue"},
-    ] + REAL_USERS
+        {"email": os.environ.get("ADMIN_EMAIL", "naomi@sabdia.com"), "password": os.environ.get("ADMIN_PASSWORD", "Admin123!"), "full_name": "Naomi Durcau", "role": "admin"},
+        {"email": "johnny@sabdia.com", "password": "Team123!", "full_name": "Johnny Fainges", "role": "team"},
+    ]
     for u in seed_users:
         existing = await db.users.find_one({"email": u["email"].lower()})
         if not existing:
@@ -699,60 +854,46 @@ async def seed():
                 "password_hash": hash_password(u["password"]),
                 "full_name": u["full_name"],
                 "role": u["role"],
-                "property_assignment": u["property_assignment"],
+                "property_assignment": None,
                 "phone": None,
                 "status": "Active",
                 "created_at": now_utc(),
             })
         else:
+            # Reset password if doesn't match (only for seed defaults)
             if not verify_password(u["password"], existing["password_hash"]):
                 await db.users.update_one(
                     {"email": u["email"].lower()},
-                    {"$set": {"password_hash": hash_password(u["password"])}},
+                    {"$set": {"password_hash": hash_password(u["password"]), "role": u["role"], "status": "Active"}},
                 )
 
-    # Assets — load from seed_assets.json (81 real assets)
+    # Re-seed assets from new XLSX-derived JSON.
+    # Strategy: if collection empty, seed; otherwise, only add NEW asset_ids.
     if await db.assets.count_documents({}) == 0:
-        seed_data = _load_seed_assets()
-        for a in seed_data:
-            site = a.get("site") or "Warehouse"
-            prop = SITE_TO_PROPERTY.get(site, site)
-            doc = {
-                "id": str(uuid.uuid4()),
-                "asset_id": a["asset_id"],
-                "name": a["name"],
-                "brand": a.get("brand"),
-                "model": a.get("model"),
-                "serial_no": a.get("serial_no"),
-                "category": a.get("category") or "Hand Tools",
-                "image_url": a.get("image_url"),
-                "location": prop,
-                "status": a.get("status") or "Available",
-                "qr_code": f"{a['asset_id']}|{a['name']}",
-                "total_checkouts": 0,
-                "last_checked_out_by": a.get("checked_out_by"),
-                "created_at": now_utc(),
-            }
-            await db.assets.insert_one(doc)
-            # If asset is currently checked out, create an open checkout so Returns flow works
-            if doc["status"] == "Checked Out" and a.get("checked_out_by"):
-                user = await db.users.find_one({"full_name": a["checked_out_by"]})
-                ret_date = (now_utc() + timedelta(days=7)).date().isoformat()
-                co = {
-                    "id": str(uuid.uuid4()),
-                    "asset_uid": doc["id"],
-                    "asset_id": doc["asset_id"],
-                    "asset_name": doc["name"],
-                    "user_id": user["id"] if user else "system",
-                    "user_name": a["checked_out_by"],
-                    "property": prop,
-                    "expected_return_date": ret_date,
-                    "actual_return_date": None,
-                    "notes": "Pre-existing checkout (imported)",
-                    "status": "Open",
-                    "timestamp_created": now_utc(),
-                }
-                await db.checkouts.insert_one(co)
+        await _seed_assets_from_file(force=False)
+    else:
+        # Add any new assets from updated file without dropping existing
+        await _seed_assets_from_file(force=False)
+
+
+# Admin-only utility to wipe + re-seed assets
+@api.post("/admin/reseed-assets")
+async def reseed_assets(admin: dict = Depends(require_roles("admin"))):
+    # Cancel any open checkouts/bookings tied to deleted assets
+    await db.checkouts.delete_many({})
+    await db.checkins.delete_many({})
+    await db.bookings.delete_many({})
+    n = await _seed_assets_from_file(force=True)
+    await db.audit.insert_one({
+        "id": str(uuid.uuid4()),
+        "timestamp": now_utc(),
+        "user_id": admin["id"],
+        "user_name": admin["full_name"],
+        "action": "assets_reseeded",
+        "entity": "asset",
+        "details": f"Re-seeded {n} assets from XLSX",
+    })
+    return {"ok": True, "inserted": n}
 
 # ---------- Lifecycle ----------
 @app.on_event("startup")

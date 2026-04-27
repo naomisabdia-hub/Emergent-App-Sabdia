@@ -9,6 +9,7 @@ import QRScanner from "../src/QRScanner";
 import PhotoCapture from "../src/PhotoCapture";
 
 type Asset = { id: string; asset_id: string; name: string; status: string; image_url?: string; brand?: string; model?: string };
+type Checkout = { id: string; asset_uid: string; asset_id: string; asset_name: string; user_name: string; expected_return_date?: string; asset?: Asset };
 
 const CONDITIONS = [
   { key: "Good", label: "GOOD", icon: "check-circle", bg: COLORS.successBg, fg: COLORS.successText, border: COLORS.success },
@@ -41,11 +42,28 @@ export default function CheckIn() {
 
   useEffect(() => {
     (async () => {
-      const r = await api.get<Asset[]>("/assets", { params: { status_filter: "Checked Out" } });
-      setAssets(r.data);
-      if (params.assetId) {
-        const found = r.data.find((a) => a.id === params.assetId);
-        if (found) setSelected(found);
+      // Use /checkouts?open_only=true&mine=true so we only see assets the current user holds.
+      // Admins see ALL open checkouts (server enforces). For non-admin, server filters to user_id.
+      try {
+        const r = await api.get<Checkout[]>("/checkouts", { params: { open_only: true } });
+        const co = r.data;
+        // Build pseudo-asset list from checkouts
+        const enrichedAssets: Asset[] = co.map((c) => ({
+          id: c.asset_uid,
+          asset_id: c.asset_id,
+          name: c.asset_name + (c.user_name ? ` · ${c.user_name}` : ""),
+          status: "Checked Out",
+          image_url: c.asset?.image_url,
+          brand: undefined,
+          model: undefined,
+        }));
+        setAssets(enrichedAssets);
+        if (params.assetId) {
+          const found = enrichedAssets.find((a) => a.id === params.assetId);
+          if (found) setSelected(found);
+        }
+      } catch (e: any) {
+        Alert.alert("Error", e?.response?.data?.detail || "Could not load your checkouts");
       }
     })();
   }, []);

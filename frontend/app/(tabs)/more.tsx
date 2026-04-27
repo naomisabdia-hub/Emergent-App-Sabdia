@@ -10,17 +10,16 @@ export default function More() {
   const { user, logout } = useAuth();
   if (!user) return null;
   const isAdmin = user.role === "admin";
-  const canApprove = isAdmin || user.role === "supervisor";
 
   const items: any[] = [
     { icon: "history", label: "Activity & History", onPress: () => router.push("/(tabs)/activity"), testID: "more-activity" },
     { icon: "calendar-month", label: "Bookings", onPress: () => router.push("/bookings"), testID: "more-bookings" },
     { icon: "calendar-plus", label: "Schedule Equipment", onPress: () => router.push("/booking"), testID: "more-schedule" },
   ];
-  if (canApprove) items.push({ icon: "clipboard-check", label: "Pending Approvals", onPress: () => router.push("/approvals"), testID: "more-approvals" });
   if (isAdmin) {
+    items.push({ icon: "clipboard-check", label: "Pending Approvals", onPress: () => router.push("/approvals"), testID: "more-approvals" });
+    items.push({ icon: "account-multiple", label: "Team & Users", onPress: () => router.push("/users"), testID: "more-users" });
     items.push({ icon: "history", label: "Audit Trail", onPress: () => router.push("/audit"), testID: "more-audit" });
-    items.push({ icon: "cog", label: "Settings", onPress: () => router.push("/settings"), testID: "more-settings" });
   }
   items.push({ icon: "account-circle", label: "My Profile", onPress: () => router.push("/(tabs)/profile"), testID: "more-profile" });
 

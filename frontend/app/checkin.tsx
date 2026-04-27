@@ -5,6 +5,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../src/auth";
 import { COLORS, SPACING, RADIUS, TOUCH, TYPE } from "../src/theme";
+import QRScanner from "../src/QRScanner";
+import PhotoCapture from "../src/PhotoCapture";
 
 type Asset = { id: string; asset_id: string; name: string; status: string; image_url?: string; brand?: string; model?: string };
 
@@ -26,6 +28,16 @@ export default function CheckIn() {
   const [condition, setCondition] = useState<string>("Good");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+  const handleScan = (val: string) => {
+    setShowScanner(false);
+    const code = (val.split("|")[0] || "").trim();
+    const found = assets.find((a) => a.asset_id === code || a.id === code);
+    if (found) setSelected(found);
+    else Alert.alert("Asset not found", `No checked-out asset matches QR code: ${code}`);
+  };
 
   useEffect(() => {
     (async () => {
@@ -45,12 +57,19 @@ export default function CheckIn() {
   const submit = async () => {
     if (!selected) return Alert.alert("Select an asset");
     if (!condition) return Alert.alert("Select condition");
+    if (condition !== "Good" && !photoUri) {
+      return Alert.alert("Photo required", "Please take a photo to document the damage or issue.");
+    }
+    if (condition !== "Good" && !notes.trim()) {
+      return Alert.alert("Notes required", "Please describe the condition issue.");
+    }
     setSubmitting(true);
     try {
       await api.post("/checkins", {
         asset_id: selected.id,
         condition,
         notes: notes || null,
+        condition_photo_url: photoUri,
       });
       Alert.alert("Returned", `${selected.name}\nCondition: ${condition}`, [{ text: "OK", onPress: () => router.back() }]);
     } catch (e: any) {
@@ -75,7 +94,7 @@ export default function CheckIn() {
           <Text style={styles.stepLabel}>STEP 1 · SELECT ASSET</Text>
 
           <TouchableOpacity testID="scan-qr-button" style={styles.scanBtn}
-            onPress={() => Alert.alert("QR Scan", "QR scanning will be available soon. Use search below for now.")}
+            onPress={() => setShowScanner(true)}
             activeOpacity={0.85}
           >
             <MaterialCommunityIcons name="qrcode-scan" size={26} color={COLORS.textInverse} />
@@ -145,9 +164,12 @@ export default function CheckIn() {
           {condition !== "Good" ? (
             <View style={styles.warnBox}>
               <MaterialCommunityIcons name="camera" size={22} color={COLORS.warningText} />
-              <Text style={styles.warnText}>Please add notes (photo upload coming soon).</Text>
+              <Text style={styles.warnText}>Photo evidence required for damage / missing parts.</Text>
             </View>
           ) : null}
+
+          <Text style={styles.fieldLabel}>PHOTO {condition !== "Good" ? "(REQUIRED)" : "(OPTIONAL)"}</Text>
+          <PhotoCapture testID="checkin-photo" onPhoto={setPhotoUri} label="Take photo of asset condition" required={condition !== "Good"} />
 
           <Text style={styles.fieldLabel}>NOTES {condition !== "Good" ? "(REQUIRED)" : "(OPTIONAL)"}</Text>
           <TextInput
@@ -160,6 +182,7 @@ export default function CheckIn() {
             multiline
           />
         </ScrollView>
+        <QRScanner visible={showScanner} onClose={() => setShowScanner(false)} onScan={handleScan} />
 
         <View style={styles.footer}>
           <TouchableOpacity testID="submit-checkin" style={styles.submit} onPress={submit} disabled={submitting} activeOpacity={0.85}>

@@ -350,6 +350,7 @@ async def create_checkout(payload: CheckoutIn, user: dict = Depends(get_current_
         "expected_return_date": payload.expected_return_date,
         "actual_return_date": None,
         "notes": payload.notes,
+        "checkout_photo_url": payload.checkout_photo_url,
         "status": "Open",
         "timestamp_created": now_utc(),
     }
@@ -413,7 +414,8 @@ async def create_checkin(payload: CheckinIn, user: dict = Depends(get_current_us
         "user_name": user["full_name"],
         "condition": payload.condition,
         "notes": payload.notes,
-        "photo_base64": payload.photo_base64,
+        "condition_photo_url": payload.condition_photo_url,
+        "checkin_photo_url": payload.checkin_photo_url,
         "linked_checkout_id": open_co["id"],
         "property_returned_at": open_co["property"],
         "timestamp_created": now_utc(),

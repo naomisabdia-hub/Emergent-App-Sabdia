@@ -135,33 +135,39 @@ backend:
 
   - task: "Checkouts with base64 photo (checkout_photo_url)"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - agent: "main"
         working: "NA"
         comment: "CheckoutIn model has checkout_photo_url field. Frontend now sends base64 data URI. Need to confirm POST /api/checkouts accepts payload, updates asset.status='Checked Out', and returns checkout record."
       - agent: "testing"
         working: false
-        comment: "POST /api/checkouts returns 200 and asset transitions to 'Checked Out' correctly, BUT the checkout_photo_url from the request is NEVER stored in the DB document. In create_checkout() (server.py ~line 342), the `co = {...}` dict constructed for db.checkouts.insert_one omits payload.checkout_photo_url entirely. Response body therefore does not contain checkout_photo_url either. Fix: add `\"checkout_photo_url\": payload.checkout_photo_url,` to the co dict. Verified via backend_test.py — response JSON has no checkout_photo_url key."
+        comment: "POST /api/checkouts returns 200 and asset transitions to 'Checked Out' correctly, BUT the checkout_photo_url from the request is NEVER stored in the DB document. Fix: add checkout_photo_url to the co dict."
+      - agent: "testing"
+        working: true
+        comment: "RETEST PASSED after fix. POST /api/checkouts now persists payload.checkout_photo_url (line 353). Verified via backend_test.py: response JSON contains non-empty checkout_photo_url (data:image/png;base64,... len=114) and asset transitions to 'Checked Out'. All assertions green."
 
   - task: "Check-ins with base64 photo (condition_photo_url) + condition enum"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - agent: "main"
         working: "NA"
         comment: "CheckinIn accepts condition_photo_url (base64). Need to verify POST /api/checkins closes open checkout, resets asset.status='Available' (or Damaged if condition != Good?), stores photo."
       - agent: "testing"
         working: false
-        comment: "POST /api/checkins crashes with HTTP 500 for every request. Root cause (confirmed in /var/log/supervisor/backend.err.log): server.py line 416 references `payload.photo_base64` but the CheckinIn Pydantic model (lines 139-144) has no `photo_base64` attribute — it defines `checkin_photo_url` and `condition_photo_url`. Traceback: AttributeError: 'CheckinIn' object has no attribute 'photo_base64'. Fix: replace line 416 with something like `\"condition_photo_url\": payload.condition_photo_url, \"checkin_photo_url\": payload.checkin_photo_url,`. Because every check-in currently 500s, neither (a) Minor-Damage flow nor (b) plain Good check-in can be validated; asset stays stuck in 'Checked Out'. Retest after fix."
+        comment: "POST /api/checkins crashed 500 due to AttributeError on payload.photo_base64. Fix: replace with condition_photo_url + checkin_photo_url."
+      - agent: "testing"
+        working: true
+        comment: "RETEST PASSED after fix. Line 416-418 now correctly references payload.condition_photo_url and payload.checkin_photo_url. End-to-end verified: (a) Minor Damage + condition_photo_url → 200, response contains condition_photo_url (len=114), asset → 'Available' (Minor Damage maps to Available per current logic). (b) Good condition, no photo → 200, asset → 'Available'. (c) Bonus Major Damage + photo → 200, asset → 'Maintenance'. Open checkout is closed, audit row written. 17/17 backend assertions green in /app/backend_test.py."
 
   - task: "Bookings CRUD + approval/rejection + conflict detection"
     implemented: true
@@ -255,9 +261,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Checkouts with base64 photo (checkout_photo_url)"
-    - "Check-ins with base64 photo (condition_photo_url) + condition enum"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -266,4 +270,6 @@ agent_communication:
   - agent: "main"
     message: "Frontend server was down due to ngrok tunnel flapping; it has recovered. Rewired checkin.tsx to support QRScanner overlay and PhotoCapture (base64 data URI) with required photo when condition != Good. Both /checkout and /checkin now post base64 photos to FastAPI. Please run backend-focused tests: end-to-end checkout → asset becomes Checked Out → checkin with 'Minor Damage' + photo → asset returns to Available (or Damaged). Use credentials from /app/memory/test_credentials.md. Only retest POST /api/checkouts and POST /api/checkins (with checkout_photo_url and condition_photo_url)."
   - agent: "testing"
-    message: "Ran backend_test.py end-to-end. Two CRITICAL bugs found in /app/backend/server.py: (1) POST /api/checkouts returns 200 and asset becomes 'Checked Out', but payload.checkout_photo_url is NOT persisted — the co dict built in create_checkout (~line 342) does not include checkout_photo_url, so the DB doc and response both lack it. (2) POST /api/checkins crashes with HTTP 500 because line 416 references `payload.photo_base64` which does not exist on the CheckinIn model (only checkin_photo_url and condition_photo_url are defined). AttributeError confirmed in backend.err.log. This blocks every check-in (damage and Good). Asset stays stuck in 'Checked Out'. PASSING: Trade login, admin login, GET /assets?status_filter=Available, GET /properties, POST /checkouts (2xx + asset → Checked Out), Admin GET /audit 200, Trade GET /audit 403. I did NOT patch the code — main agent should fix the two issues in server.py (add checkout_photo_url to co dict; replace payload.photo_base64 with condition_photo_url/checkin_photo_url in the ci dict) and request retest."
+    message: "Ran backend_test.py end-to-end. Two CRITICAL bugs found in /app/backend/server.py: (1) POST /api/checkouts returns 200 and asset becomes 'Checked Out', but payload.checkout_photo_url is NOT persisted. (2) POST /api/checkins crashes with HTTP 500 because line 416 references payload.photo_base64. Main agent should fix and request retest."
+  - agent: "testing"
+    message: "RETEST PASSED — both checkout and check-in fixes verified. Ran /app/backend_test.py end-to-end after main agent's two fixes (line 353 add checkout_photo_url to co dict; lines 417-418 use condition_photo_url + checkin_photo_url instead of photo_base64). 17/17 assertions green: (A) POST /api/checkouts persists & returns checkout_photo_url, asset → 'Checked Out'; (B) POST /api/checkins with Minor Damage + condition_photo_url returns 200, photo persisted, asset → 'Available'; (C) Plain Good check-in (no photo) returns 200, asset → 'Available'; (D) Bonus: Major Damage + photo returns 200, asset → 'Maintenance'. Audit RBAC confirmed (admin 200 / trade 403). No backend issues remaining in current_focus. Main agent can summarise & finish."

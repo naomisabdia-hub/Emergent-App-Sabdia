@@ -165,6 +165,54 @@ def main():
             f"current status={cur_status} — previous checkin likely failed, cannot set up Good-condition test",
         )
 
+    # 4b. Bonus: Major Damage → Maintenance (need a fresh checkout)
+    r = requests.get(f"{BASE}/assets/{asset_uid}", headers=h(trade_token), timeout=15)
+    cur_status = r.json().get("status") if r.status_code == 200 else None
+    if cur_status == "Available":
+        r = requests.post(
+            f"{BASE}/checkouts",
+            json={
+                "asset_id": asset_uid,
+                "property": prop_name,
+                "expected_return_date": "2026-07-15",
+                "notes": "Third checkout for Major Damage test",
+            },
+            headers=h(trade_token),
+            timeout=15,
+        )
+        if 200 <= r.status_code < 300:
+            r = requests.post(
+                f"{BASE}/checkins",
+                json={
+                    "asset_id": asset_uid,
+                    "condition": "Major Damage",
+                    "notes": "Severely damaged",
+                    "condition_photo_url": PNG_1PX_B64,
+                },
+                headers=h(trade_token),
+                timeout=15,
+            )
+            ok = 200 <= r.status_code < 300
+            log("POST /checkins (Major Damage + photo) (2xx)", ok, f"HTTP {r.status_code} body={r.text[:300]}")
+            if ok:
+                ci_body = r.json()
+                log(
+                    "Major Damage check-in response contains condition_photo_url",
+                    bool(ci_body.get("condition_photo_url")),
+                    f"present={bool(ci_body.get('condition_photo_url'))}",
+                )
+                r = requests.get(f"{BASE}/assets/{asset_uid}", headers=h(trade_token), timeout=15)
+                st = r.json().get("status") if r.status_code == 200 else None
+                log("Asset status after Major Damage == 'Maintenance'", st == "Maintenance", f"status={st}")
+        else:
+            log("Re-checkout for Major-Damage test", False, f"HTTP {r.status_code} body={r.text[:300]}")
+    else:
+        log(
+            "Skipping Major-Damage checkin (asset not Available)",
+            False,
+            f"current status={cur_status}",
+        )
+
     # 5. RBAC: Admin can GET /audit; Trade cannot
     r = login(ADMIN)
     if r.status_code != 200:

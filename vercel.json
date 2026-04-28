@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/.expo/web",
+  "env": {
+    "EXPO_PUBLIC_BACKEND_URL": "@mongodb_url"
+  }
+}

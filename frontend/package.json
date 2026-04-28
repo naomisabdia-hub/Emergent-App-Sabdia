@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "npm ci && npx expo export:web",
+    "build": "yarn install && npx expo export:web",
     "lint": "expo lint"
   },
   "dependencies": {

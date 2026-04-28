@@ -1,15 +1,5 @@
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, FlatList, Image, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
-
-// Alert.alert can silently no-op on web — use this wrapper instead
-const showAlert = (title: string, message?: string, onOk?: () => void) => {
-  if (Platform.OS === "web") {
-    window.alert(message ? `${title}\n\n${message}` : title);
-    onOk?.();
-  } else {
-    Alert.alert(title, message, onOk ? [{ text: "OK", onPress: onOk }] : undefined);
-  }
-};
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -83,13 +73,13 @@ export default function CheckIn() {
   );
 
   const submit = async () => {
-    if (!selected) return showAlert("Select an asset", "Please choose an asset from the list first.");
-    if (!condition) return showAlert("Select condition", "Please choose a condition.");
-    if (condition !== "Good" && !photoUri && Platform.OS !== "web") {
-      return showAlert("Photo required", "Please take a photo to document the damage or issue.");
+    if (!selected) return Alert.alert("Select an asset");
+    if (!condition) return Alert.alert("Select condition");
+    if (condition !== "Good" && !photoUri) {
+      return Alert.alert("Photo required", "Please take a photo to document the damage or issue.");
     }
     if (condition !== "Good" && !notes.trim()) {
-      return showAlert("Notes required", "Please describe the condition issue.");
+      return Alert.alert("Notes required", "Please describe the condition issue.");
     }
     setSubmitting(true);
     try {
@@ -99,9 +89,9 @@ export default function CheckIn() {
         notes: notes || null,
         condition_photo_url: photoUri,
       });
-      showAlert("Returned ✓", `${selected.name}\nCondition: ${condition}`, () => router.back());
+      Alert.alert("Returned", `${selected.name}\nCondition: ${condition}`, [{ text: "OK", onPress: () => router.back() }]);
     } catch (e: any) {
-      showAlert("Error", e?.response?.data?.detail || "Check-in failed");
+      Alert.alert("Error", e?.response?.data?.detail || "Check-in failed");
     } finally {
       setSubmitting(false);
     }

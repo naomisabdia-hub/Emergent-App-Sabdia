@@ -6,7 +6,7 @@ import { COLORS } from "../../src/theme";
 export default function InTab() {
   const router = useRouter();
   useEffect(() => {
-    const t = setTimeout(() => router.push("/checkin"), 0);
+    const t = setTimeout(() => router.replace("/checkin"), 0);
     return () => clearTimeout(t);
   }, []);
   return (

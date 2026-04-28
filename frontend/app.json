@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Sabdia Equipment",
-    "slug": "sabdia-equipment",
+    "name": "frontend",
+    "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "sabdia-equipment",
+    "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

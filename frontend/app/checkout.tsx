@@ -1,15 +1,5 @@
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, FlatList, Image, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
-
-// Alert.alert can silently no-op on web — use this wrapper instead
-const showAlert = (title: string, message?: string, onOk?: () => void) => {
-  if (Platform.OS === "web") {
-    window.alert(message ? `${title}\n\n${message}` : title);
-    onOk?.();
-  } else {
-    Alert.alert(title, message, onOk ? [{ text: "OK", onPress: onOk }] : undefined);
-  }
-};
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -72,8 +62,8 @@ export default function Checkout() {
   );
 
   const submit = async () => {
-    if (!selected) return showAlert("Select an asset", "Please choose an asset from the list first.");
-    if (!property) return showAlert("Select a property", "Please tap one of the property chips.");
+    if (!selected) return Alert.alert("Select an asset");
+    if (!property) return Alert.alert("Select a property");
     setSubmitting(true);
     try {
       await api.post("/checkouts", {
@@ -83,9 +73,11 @@ export default function Checkout() {
         notes: notes || null,
         checkout_photo_url: photoUri,
       });
-      showAlert("Checked out ✓", `${selected.name} → ${property}\nDue ${returnDate}`, () => router.back());
+      Alert.alert("Checked out", `${selected.name} → ${property}\nDue ${returnDate}`, [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (e: any) {
-      showAlert("Error", e?.response?.data?.detail || "Checkout failed");
+      Alert.alert("Error", e?.response?.data?.detail || "Checkout failed");
     } finally {
       setSubmitting(false);
     }

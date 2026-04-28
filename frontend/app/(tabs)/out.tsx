@@ -6,7 +6,7 @@ import { COLORS } from "../../src/theme";
 export default function OutTab() {
   const router = useRouter();
   useEffect(() => {
-    const t = setTimeout(() => router.push("/checkout"), 0);
+    const t = setTimeout(() => router.replace("/checkout"), 0);
     return () => clearTimeout(t);
   }, []);
   return (

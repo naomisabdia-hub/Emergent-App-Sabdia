@@ -27,11 +27,6 @@ const PhotoCapture = forwardRef<PhotoCaptureRef, Props>(function PhotoCapture(
   }));
 
   const pick = async () => {
-    // Web browsers don't have a camera API — fall back to file picker
-    if (Platform.OS === "web") {
-      await pickFromLibrary();
-      return;
-    }
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (!perm.granted) {
@@ -101,10 +96,12 @@ const PhotoCapture = forwardRef<PhotoCaptureRef, Props>(function PhotoCapture(
         <Text style={styles.captureLabel}>{label}</Text>
         {required ? <Text style={styles.required}>REQUIRED</Text> : null}
       </TouchableOpacity>
-      <TouchableOpacity onPress={pickFromLibrary} style={styles.galleryBtn}>
-        <MaterialCommunityIcons name="image" size={18} color={COLORS.textSecondary} />
-        <Text style={styles.galleryText}>{Platform.OS === "web" ? "Upload photo" : "Choose from gallery"}</Text>
-      </TouchableOpacity>
+      {Platform.OS !== "web" ? (
+        <TouchableOpacity onPress={pickFromLibrary} style={styles.galleryBtn}>
+          <MaterialCommunityIcons name="image" size={18} color={COLORS.textSecondary} />
+          <Text style={styles.galleryText}>Choose from gallery</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 });

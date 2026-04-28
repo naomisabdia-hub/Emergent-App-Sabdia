@@ -1,15 +1,15 @@
 export const COLORS = {
-  primary: "#1B3A5C",       // Sabdia deep navy
-  primaryActive: "#132B45", // pressed state
-  bg: "#F5F4F1",            // warm off-white — feels premium not clinical
+  primary: "#FF5E00",
+  primaryActive: "#CC4B00",
+  bg: "#F3F4F6",
   surface: "#FFFFFF",
-  surfaceDark: "#0F1F30",
-  text: "#0F1F30",
+  surfaceDark: "#111827",
+  text: "#111827",
   textSecondary: "#4B5563",
   textInverse: "#FFFFFF",
   textMuted: "#9CA3AF",
-  border: "#E8E6E1",        // slightly warm border
-  borderHeavy: "#1B3A5C",   // navy border instead of harsh black
+  border: "#E5E7EB",
+  borderHeavy: "#111827",
   success: "#10B981",
   successBg: "#D1FAE5",
   successText: "#065F46",

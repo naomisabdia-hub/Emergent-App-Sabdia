@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "Bash(git config *)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -L https://github.com/naomisabdia-hub/project-gear/archive/refs/heads/main.zip -o project-gear.zip)",
+      "Bash(unzip -q project-gear.zip)",
+      "Bash(curl -s -I https://github.com/naomisabdia-hub/project-gear)",
+      "Bash(npx tsc *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
